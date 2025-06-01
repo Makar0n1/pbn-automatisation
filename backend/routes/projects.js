@@ -47,14 +47,26 @@ router.post('/:id/run', async (req, res) => {
       return res.status(400).json({ error: 'Project already running' });
     }
 
-    console.log('Clearing previous files');
-    await deleteProjectFiles(project.name);
-    await deleteGitHubRepos(req.params.id);
-    await deleteVercelProjects(req.params.id);
-    await Project.updateOne({ _id: req.params.id }, { $set: { progress: [], status: 'running', isRunning: true } });
-
     const io = req.app.get('io');
-    io.emit('projectUpdate', { projectId: req.params.id, status: 'running', progress: [], siteCount: project.siteCount, isRunning: true });
+    io.emit('projectUpdate', { projectId: req.params.id, status: 'running', progress: project.progress, siteCount: project.siteCount, isRunning: true });
+
+    // Проверка, первый ли запуск (progress пустой)
+    if (project.progress.length > 0) {
+      console.log('Clearing previous files');
+      const projectDir = path.join(__dirname, '../../sites', project.name);
+      try {
+        await fs.access(projectDir);
+        await deleteProjectFiles(project.name);
+      } catch (err) {
+        console.log(`Directory ${projectDir} does not exist, skipping deletion`);
+      }
+      await deleteGitHubRepos(req.params.id);
+      await deleteVercelProjects(req.params.id);
+      await Project.updateOne({ _id: req.params.id }, { $set: { progress: [], status: 'running', isRunning: true } });
+    } else {
+      console.log('First run, skipping deletion');
+      await Project.updateOne({ _id: req.params.id }, { $set: { status: 'running', isRunning: true } });
+    }
 
     const projectDir = path.join(__dirname, '../../sites', project.name);
     console.log(`Creating directory: ${projectDir}`);
@@ -87,7 +99,10 @@ router.post('/:id/run', async (req, res) => {
         } catch (error) {
           console.error(`Error creating site ${currentSite}:`, error);
           clearInterval(intervalId);
-          await deleteProjectFiles(project.name);
+          const projectDirExists = await fs.access(projectDir).then(() => true).catch(() => false);
+          if (projectDirExists) {
+            await deleteProjectFiles(project.name);
+          }
           await deleteGitHubRepos(req.params.id);
           await deleteVercelProjects(req.params.id);
           await Project.updateOne({ _id: req.params.id }, { status: 'error', isRunning: false });
@@ -97,7 +112,10 @@ router.post('/:id/run', async (req, res) => {
       } catch (error) {
         console.error('Unexpected error in interval:', error);
         clearInterval(intervalId);
-        await deleteProjectFiles(project.name);
+        const projectDirExists = await fs.access(projectDir).then(() => true).catch(() => false);
+        if (projectDirExists) {
+          await deleteProjectFiles(project.name);
+        }
         await deleteGitHubRepos(req.params.id);
         await deleteVercelProjects(req.params.id);
         await Project.updateOne({ _id: req.params.id }, { status: 'error', isRunning: false });
@@ -113,7 +131,7 @@ router.post('/:id/run', async (req, res) => {
     console.error('Error running project:', error);
     await Project.updateOne({ _id: req.params.id }, { status: 'error', isRunning: false });
     const io = req.app.get('io');
-    io.emit('projectUpdate', { projectId: req.params.id, status: 'error', progress: [], siteCount: project.siteCount, isRunning: false });
+    io.emit('projectUpdate', { projectId: req.params.id, status: 'error', progress: [], siteCount: 0, isRunning: false });
     io.emit('summaryUpdate', await calculateSummary());
     res.status(500).json({ error: 'Server error', details: error.message });
   }
@@ -150,7 +168,13 @@ router.delete('/:id', async (req, res) => {
     const io = req.app.get('io');
     io.emit('projectUpdate', { projectId: req.params.id, status: 'deleting', progress: project.progress, siteCount: project.siteCount, isRunning: true });
 
-    await deleteProjectFiles(project.name);
+    const projectDir = path.join(__dirname, '../../sites', project.name);
+    try {
+      await fs.access(projectDir);
+      await deleteProjectFiles(project.name);
+    } catch (err) {
+      console.log(`Directory ${projectDir} does not exist, skipping deletion`);
+    }
     await deleteGitHubRepos(req.params.id);
     await deleteVercelProjects(req.params.id);
     await Project.deleteOne({ _id: req.params.id });

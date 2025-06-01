@@ -60,7 +60,6 @@ function Home() {
     fetchSummary();
 
     socket.on('projectUpdate', (update) => {
-      console.log('Project update:', update);
       setProjects((prev) =>
         prev.map((p) =>
           p._id === update.projectId
@@ -186,7 +185,6 @@ function Home() {
   };
 
   const handleOpenFormModal = () => {
-    console.log('Opening form modal');
     setShowFormModal(true);
   };
 
@@ -256,7 +254,7 @@ function Home() {
               <div className="bg-white p-4 rounded-lg shadow-md transition-all duration-300 transform hover:scale-105 hover:shadow-xl">
                 <p className="text-gray-600 font-semibold">Creation Details</p>
                 <p className="text-gray-800">Avg. Time: {summary.averageCreationTime} sec</p>
-                <p className="text-gray-800">AI Model: {summary.aiModel}</p>
+                <p className="text-gray-800 pt-[1px]">AI Model: {summary.aiModel}</p>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-md transition-all duration-300 transform hover:scale-105 hover:shadow-xl">
                 <p className="text-gray-600 font-semibold">Last Activity</p>
@@ -302,7 +300,6 @@ function Home() {
                     <div className="mt-4 flex space-x-4">
                       {loading[project._id] || project.isRunning ? (
                         <div className="flex-1 flex justify-center">
-                          {console.log('Showing loader for:', project._id, loading[project._id], project.isRunning)}
                           <div className="loader" style={{ display: 'inline-block', width: '2rem', height: '2rem' }}></div>
                         </div>
                       ) : (

@@ -54,8 +54,12 @@ const createGitHubRepo = async (repoName) => {
       private: true,
       auto_init: false
     });
-    console.log('GitHub repo created:', response.data.clone_url);
-    return { clone_url: response.data.clone_url, id: response.data.id };
+    const owner = response.data.owner.login;
+    console.log(`GitHub repo created: ${response.data.clone_url}, owner: ${owner}`);
+    if (process.env.USER_NAME && owner !== process.env.USER_NAME) {
+      console.warn(`Warning: GitHub owner (${owner}) does not match USER_NAME (${process.env.USER_NAME})`);
+    }
+    return { clone_url: response.data.clone_url, id: response.data.id, owner };
   } catch (error) {
     console.error('Error creating GitHub repo:', error);
     throw error;
@@ -77,7 +81,7 @@ const getDefaultBranch = async (owner, repo) => {
   }
 };
 
-const createVercelProject = async (repoName, repoId) => {
+const createVercelProject = async (repoName, repoId, owner) => {
   try {
     console.log(`Creating Vercel project: ${repoName}`);
     const response = await axios.post(
@@ -86,7 +90,7 @@ const createVercelProject = async (repoName, repoId) => {
         name: repoName,
         gitRepository: {
           type: 'github',
-          repo: `${process.env.USERNAME}/${repoName}`,
+          repo: `${owner}/${repoName}`,
           repoId: repoId
         },
         framework: null,
@@ -111,17 +115,17 @@ const createVercelProject = async (repoName, repoId) => {
   }
 };
 
-const triggerVercelDeploy = async (repoName, repoId) => {
+const triggerVercelDeploy = async (repoName, repoId, owner) => {
   try {
     console.log(`Triggering Vercel deploy for repo: ${repoName}`);
     const response = await axios.post(
-      `https://api.vercel.com/v13/deployments`,
+      'https://api.vercel.com/v13/deployments',
       {
         name: repoName,
         target: 'production',
         gitSource: {
           type: 'github',
-          repo: `${process.env.USERNAME}/${repoName}`,
+          repo: `${owner}/${repoName}`,
           repoId: repoId,
           ref: 'main'
         }
@@ -174,9 +178,11 @@ const createSite = async (projectId, siteId, projectDir, io) => {
 
     console.log(`Creating GitHub repo: ${siteId}`);
     const repoName = `site-${siteId}`;
-    const { clone_url: repoUrl, id: repoId } = await createGitHubRepo(repoName);
+    const { clone_url: repoUrl, id: repoId, owner } = await createGitHubRepo(repoName);
 
-    const owner = process.env.USERNAME;
+    console.log(`Waiting for GitHub repo sync...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
     const defaultBranch = await getDefaultBranch(owner, repoName);
 
     console.log(`Initializing git in ${siteDir} with branch ${defaultBranch}`);
@@ -203,10 +209,10 @@ const createSite = async (projectId, siteId, projectDir, io) => {
     await new Promise(resolve => setTimeout(resolve, 15000));
 
     console.log(`Creating Vercel project for ${repoName}`);
-    const vercelData = await createVercelProject(repoName, repoId);
+    const vercelData = await createVercelProject(repoName, repoId, owner);
 
     console.log(`Triggering Vercel deploy for ${repoName}`);
-    await triggerVercelDeploy(repoName, repoId);
+    await triggerVercelDeploy(repoName, repoId, owner);
 
     console.log(`Updating project progress`);
     await Project.updateOne(
@@ -220,7 +226,8 @@ const createSite = async (projectId, siteId, projectDir, io) => {
             repoUrl,
             repoName,
             vercelUrl: vercelData.domain,
-            vercelProjectId: vercelData.projectId
+            vercelProjectId: vercelData.projectId,
+            owner // Сохраняем owner
           }
         }
       }
@@ -262,23 +269,24 @@ const deleteGitHubRepos = async (projectId) => {
     for (const prog of project.progress) {
       try {
         const repoName = prog.repoName || `site-${prog.siteId}`;
-        console.log(`Checking GitHub repo: ${repoName}`);
+        const owner = prog.owner || process.env.USER_NAME || 'Studibucht'; // Фallback на USER_NAME или Studibucht
+        console.log(`Checking GitHub repo: ${owner}/${repoName}`);
         await octokit.request('GET /repos/{owner}/{repo}', {
-          owner: process.env.USERNAME,
+          owner,
           repo: repoName
         }).catch(error => {
           if (error.status === 404) {
-            console.log(`Repository ${repoName} not found, skipping deletion`);
+            console.log(`Repository ${owner}/${repoName} not found, skipping deletion`);
             return null;
           }
           throw error;
         });
-        console.log(`Deleting GitHub repo: ${repoName}`);
+        console.log(`Deleting GitHub repo: ${owner}/${repoName}`);
         await octokit.request('DELETE /repos/{owner}/{repo}', {
-          owner: process.env.USERNAME,
+          owner,
           repo: repoName
         });
-        console.log(`Successfully deleted repo: ${repoName}`);
+        console.log(`Successfully deleted repo: ${owner}/${repoName}`);
       } catch (error) {
         console.error(`Error deleting repo ${prog.repoName || `site-${prog.siteId}`}:`, error);
       }

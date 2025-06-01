@@ -3,13 +3,16 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const projectRoutes = require('./routes/projects');
 const authRoutes = require('./routes/auth');
 const authMiddleware = require('./middleware/auth');
 
-dotenv.config();
-console.log('GITHUB_PAT exists:', !!process.env.GITHUB_PAT); // Отладка
+// Загрузка .env
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+console.log('USER_NAME:', process.env.USER_NAME); // Отладка
+console.log('GITHUB_PAT exists:', !!process.env.GITHUB_PAT);
 
 const app = express();
 const server = http.createServer(app);

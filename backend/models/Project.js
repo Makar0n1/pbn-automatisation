@@ -13,8 +13,10 @@ const ProjectSchema = new mongoose.Schema({
     status: String,
     createdAt: Date,
     repoUrl: String,
+    repoName: String,
     vercelUrl: String,
-    vercelProjectId: String
+    vercelProjectId: String,
+    owner: String // Добавляем owner
   }],
   createdAt: { type: Date, default: Date.now }
 });
